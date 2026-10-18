@@ -76,7 +76,8 @@ button { font: inherit; cursor: pointer; }
 .switch.on .knob { background: var(--green); }
 .switch.on .knob:after { transform: translateX(20px); background: #fff; }
 .switch.resting .knob { background: var(--amber); }
-.switch:disabled { cursor: default; }
+.switch:disabled, .seg button:disabled { cursor: default; }
+.control.disabled .seg, .control.disabled .switches, .control.disabled input, .control.disabled .primary { opacity: .5; }
 .switch:disabled .knob { opacity: .85; }
 .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
 .control h3 { font-size: 13px; color: var(--muted); font-weight: 500; margin: 18px 0 4px; }

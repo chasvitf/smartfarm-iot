@@ -107,7 +107,7 @@ function onState(s) {
     state.points.push({ ts, t: s.t, h: s.h, soil: s.soil, light: s.light, pump: s.pump ? 100 : 0 });
     trimPoints();
   }
-  if (state.status !== "online" && Date.now() - ts < STALE_MS) state.status = "online";
+  if (state.status !== "online" && s.ts && Date.now() - ts < STALE_MS) state.status = "online";
   render();
 }
 
@@ -144,8 +144,15 @@ function setPill(kind) {
   }[kind];
 }
 
+// When the data was measured: the board's NTP timestamp if it sent one,
+// otherwise when the message arrived (retained messages arrive at once, so
+// that alone would make old data look fresh).
+function dataTime() {
+  return state.last?.ts ? state.last.ts * 1000 : state.lastAt;
+}
+
 function isLive() {
-  return state.status === "online" && Date.now() - state.lastAt < STALE_MS;
+  return state.status === "online" && Date.now() - dataTime() < STALE_MS;
 }
 
 function render() {
@@ -178,6 +185,7 @@ function render() {
 
   const manual = (s?.mode || cfg.mode) === "manual";
   const canControl = live || !!state.sim;
+  document.querySelector(".control").classList.toggle("disabled", !canControl);
   document.querySelectorAll(".seg button").forEach((b) => {
     b.classList.toggle("on", b.dataset.mode === (manual ? "manual" : "auto"));
     b.disabled = !canControl;
@@ -215,9 +223,8 @@ function render() {
 }
 
 function renderAgo() {
-  if (!state.lastAt) { $("ago").textContent = ""; return; }
-  const sec = Math.round((Date.now() - state.lastAt) / 1000);
-  $("ago").textContent = sec < 60 ? `อัปเดต ${sec} วินาทีที่แล้ว` : "";
+  const sec = Math.round((Date.now() - dataTime()) / 1000);
+  $("ago").textContent = state.lastAt && sec >= 0 && sec < 60 ? `อัปเดต ${sec} วินาทีที่แล้ว` : "";
 }
 
 function formatUptime(sec) {

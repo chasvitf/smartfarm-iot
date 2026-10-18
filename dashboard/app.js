@@ -1,6 +1,7 @@
 import mqtt from "https://cdn.jsdelivr.net/npm/mqtt@5.16.0/dist/mqtt.esm.js";
 import { drawHistory, drawSpark } from "./chart.js";
 import { Simulator } from "./sim.js";
+import { LocalBus } from "./localbus.js";
 
 const BROKER = "wss://broker.emqx.io:8084/mqtt";
 const params = new URLSearchParams(location.search);
@@ -34,14 +35,15 @@ const client = mqtt.connect(BROKER, {
   reconnectPeriod: 3000,
   connectTimeout: 10000,
 });
-client.on("connect", () => {
-  addLog("เชื่อมต่อ MQTT broker แล้ว");
-  // mqtt.js resubscribes by itself after a reconnect; only the first connect sets up.
-  if (!state.base) watch(state.device);
-});
+client.on("connect", () => addLog("เชื่อมต่อ MQTT broker แล้ว"));
 client.on("reconnect", () => setPill("connecting"));
 client.on("error", (err) => console.warn("SmartFarm: mqtt error", err.message));
-client.on("message", (topic, payload) => {
+// The simulator runs inside the page on its own bus; the real board comes through the broker.
+const bus = new LocalBus();
+client.on("message", (topic, payload) => { if (!state.sim) onMessage(topic, payload); });
+bus.on("message", (topic, payload) => { if (state.sim) onMessage(topic, payload); });
+
+function onMessage(topic, payload) {
   if (!topic.startsWith(state.base + "/")) return;
   const sub = topic.slice(state.base.length + 1);
   const text = payload.toString();
@@ -53,10 +55,10 @@ client.on("message", (topic, payload) => {
   } catch (err) {
     console.warn("SmartFarm: bad message on", topic, err);
   }
-});
+}
 
-function watch(device) {
-  if (state.base) client.unsubscribe(`${state.base}/#`);
+function watch(device, simulated = false) {
+  if (state.base && !state.base.includes("/sim-")) client.unsubscribe(`${state.base}/#`);
   state.device = device;
   state.base = `smartfarm-th/${device}`;
   state.status = null;
@@ -66,15 +68,15 @@ function watch(device) {
   state.spark = { t: [], h: [], soil: [], light: [] };
   state.cfgDirty = false;
   $("deviceId").textContent = device;
-  $("m-topic").textContent = `${state.base}/#`;
-  client.subscribe(`${state.base}/#`, { qos: 1 });
+  $("m-topic").textContent = simulated ? "ในเบราว์เซอร์ (ไม่ผ่าน broker)" : `${state.base}/#`;
+  if (!simulated) client.subscribe(`${state.base}/#`, { qos: 1 });
   render();
   // Retained messages arrive at once; if nothing says "online", show the offline banner.
   setTimeout(() => { if (state.status === null) { state.status = "offline"; render(); } }, 4000);
 }
 
 function send(cmd) {
-  client.publish(`${state.base}/cmd`, JSON.stringify(cmd), { qos: 1 });
+  (state.sim ? bus : client).publish(`${state.base}/cmd`, JSON.stringify(cmd), { qos: 1 });
 }
 
 // ---------- incoming ----------
@@ -266,8 +268,8 @@ $("saveCfg").addEventListener("click", () => {
 });
 $("startSim").addEventListener("click", () => {
   const id = "sim-" + Math.random().toString(36).slice(2, 6);
-  watch(id);
-  state.sim = new Simulator(client, `smartfarm-th/${id}`);
+  state.sim = new Simulator(bus, `smartfarm-th/${id}`);
+  watch(id, true);
   state.sim.start();
   addLog("เปิดอุปกรณ์จำลองในเบราว์เซอร์");
   render();
@@ -285,4 +287,8 @@ function stopSim() {
 setInterval(() => { renderAgo(); if (!isLive() && state.status === "online" && !state.sim) render(); }, 1000);
 new ResizeObserver(() => render()).observe($("chart"));
 if (params.has("debug")) window.smartfarm = { state, client };
-if (params.get("sim") === "1") client.once("connect", () => $("startSim").click());
+// Start watching now, not on "connect": mqtt.js queues the subscription until it
+// connects, and if the public broker is down the offline banner (with the
+// simulator button) still appears after a few seconds.
+if (params.get("sim") === "1") $("startSim").click();
+else watch(state.device);

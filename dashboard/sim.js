@@ -1,7 +1,6 @@
 // In-browser stand-in for the ESP32, for when the real board is offline. It runs
-// the same control logic (control.js) on a toy greenhouse model and talks over
-// the same MQTT topics, so the dashboard code path is identical. Nothing it
-// publishes is retained, so it leaves no trace on the broker.
+// the same control logic (control.js) on a toy greenhouse model and speaks the
+// same topics and messages, on an in-page bus (localbus.js) instead of the broker.
 import { Controller, settingsValid } from "./control.js";
 
 const DAY_MS = 60 * 60 * 1000;   // a simulated day passes in one real hour

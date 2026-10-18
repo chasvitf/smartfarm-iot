@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SmartFarm · แดชบอร์ดโรงเรือนอัจฉริยะ ESP32</title>
+  <meta name="description" content="แดชบอร์ดสดของโรงเรือนอัจฉริยะ ESP32: อุณหภูมิ ความชื้น ความชื้นดิน แสง สั่งปั๊มน้ำและพัดลมผ่าน MQTT">
+  <meta name="theme-color" content="#0b1220">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="SmartFarm · แดชบอร์ดโรงเรือนอัจฉริยะ ESP32">
+  <meta property="og:description" content="ESP32 + DHT22 + เซนเซอร์ดิน + รีเลย์ ส่งข้อมูลผ่าน MQTT (TLS) ดูค่าและสั่งงานจากมือถือได้">
+  <meta property="og:image" content="https://smartfarm-th.vercel.app/og.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <div>
+        <h1>SmartFarm</h1>
+        <p>แดชบอร์ดโรงเรือนอัจฉริยะ · ESP32 + MQTT</p>
+      </div>
+    </div>
+    <div class="conn">
+      <span class="device" id="deviceId">demo-01</span>
+      <span class="pill" id="status"><i></i><b>กำลังเชื่อมต่อ…</b></span>
+      <span class="ago" id="ago"></span>
+    </div>
+  </header>
+
+  <section class="banner" id="offline" hidden>
+    <div>
+      <b id="offlineTitle">บอร์ด demo-01 ออฟไลน์อยู่</b>
+      <span id="offlineText">บอร์ดจริงรันอยู่บน Wokwi (ตัวจำลอง ESP32) เป็นช่วง ๆ ตอนนี้แสดงข้อมูลล่าสุดที่บอร์ดส่งไว้</span>
+    </div>
+    <div class="banner-actions">
+      <button id="startSim" class="primary">▶ เปิดอุปกรณ์จำลองในเบราว์เซอร์</button>
+      <a href="https://github.com/chasvitf/smartfarm-iot#ลองรันบอร์ดจริงบน-wokwi" target="_blank" rel="noopener">วิธีรันบอร์ดบน Wokwi</a>
+    </div>
+  </section>
+  <section class="banner sim" id="simBanner" hidden>
+    <div><b>กำลังใช้อุปกรณ์จำลองในเบราว์เซอร์ (ไม่ใช่บอร์ดจริง)</b>
+      <span>ใช้ตรรกะควบคุมชุดเดียวกับเฟิร์มแวร์ ESP32 และส่งข้อมูลผ่าน MQTT broker จริง ลองสลับเป็นโหมดสั่งเองหรือปรับค่าเกณฑ์ดูได้</span></div>
+    <div class="banner-actions"><button id="stopSim">กลับไปดูบอร์ดจริง</button></div>
+  </section>
+
+  <main class="grid">
+    <section class="cards">
+      <article class="card" data-key="t">
+        <h2>อุณหภูมิอากาศ</h2>
+        <div class="value"><b id="v-t">–</b><small>°C</small></div>
+        <svg class="spark" id="s-t"></svg>
+        <p class="note" id="n-t"></p>
+      </article>
+      <article class="card" data-key="h">
+        <h2>ความชื้นอากาศ</h2>
+        <div class="value"><b id="v-h">–</b><small>%</small></div>
+        <svg class="spark" id="s-h"></svg>
+        <p class="note">DHT22</p>
+      </article>
+      <article class="card" data-key="soil">
+        <h2>ความชื้นดิน</h2>
+        <div class="value"><b id="v-soil">–</b><small>%</small></div>
+        <svg class="spark" id="s-soil"></svg>
+        <p class="note" id="n-soil"></p>
+      </article>
+      <article class="card" data-key="light">
+        <h2>แสง</h2>
+        <div class="value"><b id="v-light">–</b><small>%</small></div>
+        <svg class="spark" id="s-light"></svg>
+        <p class="note">LDR</p>
+      </article>
+    </section>
+
+    <section class="panel control">
+      <h2>ควบคุม</h2>
+      <div class="seg" role="group" aria-label="โหมด">
+        <button data-mode="auto">อัตโนมัติ</button>
+        <button data-mode="manual">สั่งเอง</button>
+      </div>
+      <div class="switches">
+        <button class="switch" id="pump" data-out="pump"><span class="icon">💧</span><span><b>ปั๊มน้ำ</b><em id="pumpState">–</em></span><i class="knob"></i></button>
+        <button class="switch" id="fan" data-out="fan"><span class="icon">🌀</span><span><b>พัดลม</b><em id="fanState">–</em></span><i class="knob"></i></button>
+      </div>
+      <p class="hint" id="modeHint">โหมดอัตโนมัติ: บอร์ดตัดสินใจเองจากค่าเซนเซอร์</p>
+
+      <h3>ค่าเกณฑ์</h3>
+      <label>รดน้ำเมื่อดินแห้งกว่า <output id="soilMinOut">35</output>%
+        <input type="range" id="soilMin" min="10" max="80" step="1" value="35">
+      </label>
+      <label>เปิดพัดลมเมื่อร้อนเกิน <output id="tempMaxOut">32</output>°C
+        <input type="range" id="tempMax" min="20" max="45" step="0.5" value="32">
+      </label>
+      <button id="saveCfg" class="primary" disabled>บันทึกค่าเกณฑ์ลงบอร์ด</button>
+    </section>
+
+    <section class="panel history">
+      <div class="panel-head">
+        <h2>ย้อนหลัง 1 ชั่วโมง</h2>
+        <div class="legend"><span class="lt">อุณหภูมิ</span><span class="ls">ความชื้นดิน</span><span class="lp">ปั๊มทำงาน</span></div>
+      </div>
+      <svg id="chart"></svg>
+    </section>
+
+    <section class="panel side">
+      <h2>เหตุการณ์ล่าสุด</h2>
+      <ul class="log" id="log"></ul>
+      <h2>ข้อมูลบอร์ด</h2>
+      <dl class="meta">
+        <dt>สัญญาณ Wi-Fi</dt><dd id="m-rssi">–</dd>
+        <dt>เปิดเครื่องมาแล้ว</dt><dd id="m-uptime">–</dd>
+        <dt>เฟิร์มแวร์</dt><dd id="m-fw">–</dd>
+        <dt>MQTT</dt><dd class="mono" id="m-topic">–</dd>
+      </dl>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>ESP32 · DHT22 · เซนเซอร์ความชื้นดิน · LDR · รีเลย์ 2 ช่อง · จอ OLED · MQTT over TLS (EMQX public broker)</p>
+    <p>ทำโดย <a href="https://fastwork.co/user/chasvitf" target="_blank" rel="noopener">Chanavee · รับทำ Arduino / ESP32 / IoT บน Fastwork</a> · <a href="https://github.com/chasvitf/smartfarm-iot" target="_blank" rel="noopener">ซอร์สโค้ดและวงจร</a></p>
+  </footer>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
